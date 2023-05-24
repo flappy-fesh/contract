@@ -18,6 +18,7 @@ module fesh_marketplace::marketplace {
     const EAdminOnly:u64 = 0;
     const EWrongSeller: u64 = 1001;
     const EMarketplaceNotAvailableNow: u64 = 1002;
+    const ENftNotAvailableNow: u64 = 1003;
 
 
     
@@ -45,7 +46,8 @@ module fesh_marketplace::marketplace {
         containers : vector<Status>,
         maximum_size: u64,
         fee: u64,
-        enable: bool
+        enable: bool,
+        allow_types: vector<TypeName>
     }
 
     struct Container has key { 
@@ -93,6 +95,7 @@ module fesh_marketplace::marketplace {
             maximum_size: MAXIMUM_CONTAINER_SIZE,
             fee: DEFAULT_MARKETPLACE_FEE,
             enable: false,
+            allow_types: vector::empty()
         };
 
         //deposit new container in container list 
@@ -114,7 +117,7 @@ module fesh_marketplace::marketplace {
     * @param admin is admin id
     * @param address
     */
-    fun is_admin(admin: &mut Admin, address : address) : bool {
+    fun is_admin(admin: &mut Admin, address: address) : bool {
             let rs = false;
             let list = admin.addresses;
             let length = vector::length(&list);
@@ -130,6 +133,69 @@ module fesh_marketplace::marketplace {
             index = index + 1;
             };
             rs
+    }
+
+
+    /***
+    * @dev is_available_type
+    * @param marketplace is marketplace id
+    */
+    fun is_available_type<T: key + store>(marketplace: &mut Marketplace) : bool {
+            let rs = false;
+            let list = marketplace.allow_types;
+            let length = vector::length(&list);
+
+            let index = 0;
+
+            while(index < length) {
+            let current = vector::borrow<TypeName>(&list, index);
+            if(*current == type_name::get<T>()) {
+                    rs = true;
+                    break
+            };
+            index = index + 1;
+            };
+            rs
+    }
+
+    /***
+    * @dev make_add_allow_type
+    * @param marketplace is marketplace id
+    */
+    public entry fun make_add_allow_type<T: key + store>(admin: &mut Admin, marketplace: &mut Marketplace, ctx:&mut TxContext){
+        let sender = sender(ctx);
+        // admin only
+        assert!(is_admin(admin, sender) == true, EAdminOnly);
+        vector::push_back<TypeName>(&mut marketplace.allow_types, type_name::get<T>());
+    }
+
+
+    /***
+    * @dev make_remove_allow_type
+    * @param marketplace is marketplace id
+    */
+    public entry fun make_remove_allow_type<T: key + store>(admin: &mut Admin, marketplace:&mut Marketplace, ctx:&mut TxContext){
+            // check admin
+            let sender = sender(ctx);
+            assert!(is_admin(admin, sender) == true, EAdminOnly);
+
+            let index = 0;
+            let types = marketplace.allow_types;
+            let types_length = vector::length(&types);
+            let current_index = 0;
+            let is_existed = false;
+            while(index < types_length) {
+                    if(*vector::borrow<TypeName>(&types, index) == type_name::get<T>()) {
+                            is_existed = true;
+                            current_index = index;
+                    };
+
+                    index = index + 1;
+            };
+
+            if(is_existed == true) {
+                    vector::remove(&mut types, current_index);
+            };
     }
 
     /***
@@ -229,6 +295,7 @@ module fesh_marketplace::marketplace {
         price: u64, 
         ctx: &mut TxContext
     ) {
+        assert!(is_available_type<T>(marketplace) == true, ENftNotAvailableNow);
         assert!(marketplace.enable == true, EMarketplaceNotAvailableNow);
         // check if container is full
         if(container.count >= marketplace.maximum_size){
