@@ -162,7 +162,7 @@ module fesh_marketplace::marketplace {
     * @dev make_add_allow_type
     * @param marketplace is marketplace id
     */
-    public entry fun make_add_allow_type<T: key + store>(admin: &mut Admin, marketplace: &mut Marketplace, ctx:&mut TxContext){
+    public entry fun make_add_type<T: key + store>(admin: &mut Admin, marketplace: &mut Marketplace, ctx:&mut TxContext){
         let sender = sender(ctx);
         // admin only
         assert!(is_admin(admin, sender) == true, EAdminOnly);
@@ -174,7 +174,7 @@ module fesh_marketplace::marketplace {
     * @dev make_remove_allow_type
     * @param marketplace is marketplace id
     */
-    public entry fun make_remove_allow_type<T: key + store>(admin: &mut Admin, marketplace:&mut Marketplace, ctx:&mut TxContext){
+    public entry fun make_remove_type<T: key + store>(admin: &mut Admin, marketplace:&mut Marketplace, ctx:&mut TxContext){
             // check admin
             let sender = sender(ctx);
             assert!(is_admin(admin, sender) == true, EAdminOnly);
@@ -188,6 +188,7 @@ module fesh_marketplace::marketplace {
                     if(*vector::borrow<TypeName>(&types, index) == type_name::get<T>()) {
                             is_existed = true;
                             current_index = index;
+                            break
                     };
 
                     index = index + 1;
@@ -229,6 +230,7 @@ module fesh_marketplace::marketplace {
                     if(*vector::borrow(&admins, index) == delete_address) {
                             is_existed = true;
                             current_index = index;
+                            break
                     };
 
                     index = index + 1;

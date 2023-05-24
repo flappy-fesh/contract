@@ -247,6 +247,7 @@ module fesh_nft::nft {
                     if(*vector::borrow(&admins, index) == delete_address) {
                             is_existed = true;
                             current_index = index;
+                            break
                     };
 
                     index = index + 1;
@@ -276,6 +277,7 @@ module fesh_nft::nft {
                     if(*vector::borrow(&admins, index) == delete_address) {
                             is_existed = true;
                             current_index = index;
+                            break
                     };
 
                     index = index + 1;
@@ -310,6 +312,27 @@ module fesh_nft::nft {
     }
 
     /***
+    * @dev make_vec_map
+    * @param attribute_keys vector attribute keys
+    * @param attribute_keys vector attribute keys
+    */
+    fun make_vec_map(attribute_keys: vector<String>, attribute_values: vector<String>):VecMap<String, String>  {
+        let attribute_keys_lenght = vector::length(&attribute_keys);
+        let attribute_values_lenght = vector::length(&attribute_values);
+        assert!(attribute_keys_lenght == attribute_values_lenght, EAttributeWrongLimit);
+        let loop_index = 0;
+
+        let attributes: VecMap<String, String> = vec_map::empty();
+        while(loop_index < attribute_keys_lenght) {
+            let current_attribute_key = vector::pop_back<String>(&mut attribute_keys);
+            let current_attribute_value = vector::pop_back<String>(&mut attribute_values);
+            vec_map::insert(&mut attributes, current_attribute_key, current_attribute_value);
+            loop_index = loop_index + 1;
+        };
+        attributes
+    }
+
+    /***
     * @dev add_nft_for_random
     * @param admin is admin id
     * @param container is container id
@@ -334,18 +357,7 @@ module fesh_nft::nft {
         //admin only
         assert!(is_admin(admin, sender) == true, EAdminOnly);
 
-        let attribute_keys_lenght = vector::length(&attribute_keys);
-        let attribute_values_lenght = vector::length(&attribute_values);
-        assert!(attribute_keys_lenght == attribute_values_lenght, EAttributeWrongLimit);
-        let loop_index = 0;
-
-        let attributes: VecMap<String, String> = vec_map::empty();
-        while(loop_index < attribute_keys_lenght) {
-            let current_attribute_key = vector::pop_back<String>(&mut attribute_keys);
-            let current_attribute_value = vector::pop_back<String>(&mut attribute_values);
-            vec_map::insert(&mut attributes, current_attribute_key, current_attribute_value);
-            loop_index = loop_index + 1;
-        };
+        let attributes: VecMap<String, String> = make_vec_map(attribute_keys, attribute_values);
 
         vector::push_back(&mut container.nfts_for_random, NftAttribute {
             name,
@@ -365,6 +377,7 @@ module fesh_nft::nft {
 
 
     struct RemoveNftForRandomEvent has copy,drop {}    
+
     /***
     * @dev remove_nft_for_random
     * @param admin is admin id
@@ -477,20 +490,10 @@ module fesh_nft::nft {
         // map attributes
         let index = 0;
         let current_index = container.total_minted;
-
-        let attribute_keys_lenght = vector::length(&attribute_keys);
-        let attribute_values_lenght = vector::length(&attribute_values);
-        assert!(attribute_keys_lenght == attribute_values_lenght, EAttributeWrongLimit);
-        let loop_index = 0;
         let nft_ids = vector::empty();
 
-        let attributes: VecMap<String, String> = vec_map::empty();
-        while(loop_index < attribute_keys_lenght) {
-            let current_attribute_key = vector::pop_back<String>(&mut attribute_keys);
-            let current_attribute_value = vector::pop_back<String>(&mut attribute_values);
-            vec_map::insert(&mut attributes, current_attribute_key, current_attribute_value);
-            loop_index = loop_index + 1;
-        };
+        let attributes: VecMap<String, String> = make_vec_map(attribute_keys, attribute_values);
+
         // mint and transfer with amount
         while(index < amount) {
             let new_nft = Nft{
