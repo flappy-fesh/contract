@@ -1,7 +1,7 @@
 module fesh_nft::nft {
     //import module
     use std::string::{Self,String,utf8};
-    use sui::tx_context::{TxContext,sender};
+    use sui::tx_context::{Self, TxContext,sender};
     use sui::transfer;
     use std::vector;
     use sui::object::{Self,ID,UID};
@@ -119,7 +119,7 @@ module fesh_nft::nft {
             id: object::new(ctx),
             total_minted: 0,
             is_enable_random_mint: false,
-            random_mint_fee: 2 * ONE_SUI,
+            random_mint_fee: 10000,  //0.001 * ONE_SUI
             nfts_for_random: vector::empty(),
         };
 
@@ -341,10 +341,9 @@ module fesh_nft::nft {
 
         let attributes: VecMap<String, String> = vec_map::empty();
         while(loop_index < attribute_keys_lenght) {
-            let current_attribute_key = vector::remove<String>(&mut attribute_keys, loop_index);
-            let current_attribute_value = vector::remove<String>(&mut attribute_values, loop_index);
-            let current_map_value: VecMap<String, String> = vec_map::empty();
-            vec_map::insert(&mut current_map_value, current_attribute_key, current_attribute_value);
+            let current_attribute_key = vector::pop_back<String>(&mut attribute_keys);
+            let current_attribute_value = vector::pop_back<String>(&mut attribute_values);
+            vec_map::insert(&mut attributes, current_attribute_key, current_attribute_value);
             loop_index = loop_index + 1;
         };
 
@@ -413,7 +412,7 @@ module fesh_nft::nft {
             // get nft from random number
             while(loop_index < nft_attributes_length) {
                 let current_nft_attribute = vector::borrow(nft_attributes, loop_index);
-                if(current_nft_attribute.rate > random_number) {
+                if(current_nft_attribute.rate >= random_number) {
                     result = loop_index;
                     break
                 };
@@ -432,6 +431,7 @@ module fesh_nft::nft {
             // transfer to sender
             transfer::public_transfer(new_nft, sender);
             current_index = current_index + 1;
+            index = index + 1;
             
         };
         // emit event
@@ -486,10 +486,9 @@ module fesh_nft::nft {
 
         let attributes: VecMap<String, String> = vec_map::empty();
         while(loop_index < attribute_keys_lenght) {
-            let current_attribute_key = vector::remove<String>(&mut attribute_keys, loop_index);
-            let current_attribute_value = vector::remove<String>(&mut attribute_values, loop_index);
-            let current_map_value: VecMap<String, String> = vec_map::empty();
-            vec_map::insert(&mut current_map_value, current_attribute_key, current_attribute_value);
+            let current_attribute_key = vector::pop_back<String>(&mut attribute_keys);
+            let current_attribute_value = vector::pop_back<String>(&mut attribute_values);
+            vec_map::insert(&mut attributes, current_attribute_key, current_attribute_value);
             loop_index = loop_index + 1;
         };
         // mint and transfer with amount
@@ -503,6 +502,7 @@ module fesh_nft::nft {
             };
             vector::push_back(&mut nft_ids, object::id(&new_nft));
             transfer::public_transfer(new_nft, transfer_to);
+            index = index + 1;
             current_index = current_index + 1;
             
         };
