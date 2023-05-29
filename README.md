@@ -1,5 +1,5 @@
 # Fesh contract
 
 ```
-Let's F***g Feshhhhhhhh
+Let's Feshhhhhhhh
 ```
