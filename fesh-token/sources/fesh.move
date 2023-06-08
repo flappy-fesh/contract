@@ -54,7 +54,7 @@ module fesh_token::fesh {
         Storage {
           id: object::new(ctx),
           supply,
-          limit: 1000000000 * 1000000000000000,
+          limit: 1_000_000_000_000_000,
         }
       );
 
@@ -76,9 +76,9 @@ module fesh_token::fesh {
   * @param publisher The Publisher object of the package who wishes to mint FESH
   * @return Coin<FESH> New created FESH coin
   */
-  public fun mint(_: &AdminCap, storage: &mut Storage, value: u64, ctx: &mut TxContext): Coin<FESH> {
+  entry public fun mint(_: &AdminCap, storage: &mut Storage, value: u64, transfer_to: address, ctx: &mut TxContext) {
     assert!(storage.limit > total_supply(storage) + value, ERROR_INVALID_SUPPLY);
-    coin::from_balance(balance::increase_supply(&mut storage.supply, value), ctx)
+    transfer::public_transfer(coin::from_balance(balance::increase_supply(&mut storage.supply, value), ctx), transfer_to);
   }
 
   /**
