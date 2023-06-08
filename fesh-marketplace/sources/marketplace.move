@@ -279,6 +279,7 @@ module fesh_marketplace::marketplace {
         marketplace_id: ID,
         price: u64,
         seller: address,
+        token_type: TypeName
     }
 
     /***
@@ -324,6 +325,7 @@ module fesh_marketplace::marketplace {
                 marketplace_id: object::id(marketplace),
                 price: price,
                 seller: tx_context::sender(ctx),
+                token_type: type_name::get<T>()  
             });
             // add dof to container
             ofield::add(&mut new_container.id, nft_id, listing);
@@ -339,7 +341,7 @@ module fesh_marketplace::marketplace {
                 coin_type: type_name::get<C>(),
                 price: price,   
                 nft_id,
-                nft_type: type_name::get<T>()        
+                nft_type: type_name::get<T>(),    
             };
             // event
             event::emit(ListEvent{
@@ -349,6 +351,7 @@ module fesh_marketplace::marketplace {
                 marketplace_id: object::id(marketplace),
                 price: price,
                 seller: tx_context::sender(ctx),
+                token_type: type_name::get<T>() 
             });
             // check if full after list
             if(container.count + 1 == marketplace.maximum_size) {
@@ -381,6 +384,27 @@ module fesh_marketplace::marketplace {
         ctx: &mut TxContext
     ) {
         list<T,C>(marketplace, container, current_kiosk, item, price, ctx);
+    }
+
+    /***
+    * @dev make_update_list_price
+    * @param marketplace is marketplace id
+    * @param container is container id
+    * @param nft_id is nft id
+    * @param price is new price of nft
+    */
+    fun make_update_list_price<T: store + key,C>(
+        marketplace: &mut Marketplace, 
+        container: &mut Container, 
+        nft_id: ID, 
+        price: u64, 
+        ctx: &mut TxContext
+    ) {
+        assert!(marketplace.enable == true, EMarketplaceNotAvailableNow);
+        let sender = sender(ctx);
+        let current_item = ofield::borrow_mut<ID, List>(&mut container.id, nft_id);
+        assert!(current_item.seller == sender, EWrongSeller);
+        current_item.price = price;
     }
 
     struct DelistEvent has copy, drop {

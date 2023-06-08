@@ -1,0 +1,11 @@
+[package]
+name = "fesh_staking"
+version = "0.0.0"
+
+[dependencies]
+Sui = { git = "https://github.com/MystenLabs/sui.git", subdir="crates/sui-framework/packages/sui-framework/", rev = "devnet" }
+fesh_token = { local = "../fesh-token" }
+
+[addresses]
+fesh_staking = "0x0"
+sui =  "0x2"
