@@ -22,6 +22,7 @@ module fesh_item::royal_item {
 
 
     struct Piece has store, copy, drop {
+        royal_name: String,
         name: String,
         attributes: VecMap<String, String>,
         image_url: String,
@@ -32,8 +33,7 @@ module fesh_item::royal_item {
         name: String,
         attributes: VecMap<String, String>,
         image_url: String,
-        price: u64,
-        peices: vector<Piece>,
+        fee: u64,
     }
 
 
@@ -43,7 +43,7 @@ module fesh_item::royal_item {
         total_royal_item_compile: u64,
         total_royal_piece_bought: u64,
         royal_items: vector<RoyalItem>,
-        get_royal_fee: u64,
+        peice_items: vector<Piece>,
         enable: bool
     }
 
@@ -63,12 +63,7 @@ module fesh_item::royal_item {
             total_royal_item_compile: 0,
             total_royal_piece_bought: 0,
             royal_items: vector::empty(),
-            royal_item: RoyalItem {
-                name: utf8(b"Royal"),
-                attributes: vec_map::empty(),
-                image_url: utf8(b"default image"),
-                price: 0,
-            },
+            peice_items: vector::empty(),
             enable: false
         };
 
@@ -115,7 +110,7 @@ module fesh_item::royal_item {
     * @param container is container id
     * @param name is name of item
     */
-    fun get_royal_buy_name(container: &mut Container, name: String):(String, VecMap<String, String>, String, vector<Piece>) {
+    fun get_royal_buy_name(container: &mut Container, name: String):(String, VecMap<String, String>, String, u64) {
         let index = 0;
         // get list item
         let items = container.royal_items;
@@ -134,9 +129,9 @@ module fesh_item::royal_item {
         // check not found
         assert!(is_existed == true, EItemNotFound);
         // get
-        let current_item = vector::borrow(&mut items, current_index);
+        let current_royal = vector::borrow(&mut items, current_index);
         // return
-        (current_item.name, current_item.attributes, current_item.image_url, current_item.pieces)
+        (current_royal.name, current_royal.attributes, current_royal.image_url, current_royal.fee)
     }
 
     /***
@@ -147,19 +142,19 @@ module fesh_item::royal_item {
     */
     fun get_peice_buy_name(container: &mut Container, royal_name: String, item_name: String):(String, VecMap<String, String>, String, u64) {
         let index = 0;
-        // get royal
-        let (_, _, _, pieces) = get_royal_buy_name(container, royal_name),
 
         // get list item
-        let items = pieces;
+        let items = container.peice_items;
         let items_length = vector::length(&items);
         let current_index = 0;
         let is_existed = false;
         // loop to find index
         while(index < items_length) {
-                if(vector::borrow(&items, index).name == name) {
+                let current_item = vector::borrow(&items, index);
+                if(current_item.name == item_name && current_item.royal_name == royal_name) {
                         is_existed = true;
                         current_index = index;
+                        break
                 };
 
                 index = index + 1;
@@ -167,9 +162,9 @@ module fesh_item::royal_item {
         // check not found
         assert!(is_existed == true, EItemNotFound);
         // get
-        let current_item = vector::borrow(&mut items, current_index);
+        let current_peice = vector::borrow(&mut items, current_index);
         // return
-        (current_item.name, current_item.attributes, current_item.image_url, current_item.price)
+        (current_peice.name, current_peice.attributes, current_peice.image_url, current_peice.price)
     }
 
     /***
@@ -202,17 +197,18 @@ module fesh_item::royal_item {
     }
 
     /***
-    * @dev add_item
+    * @dev add_royal_item
     * @param admin is admin id
     * @param container is container id
     * @param name is name of item
     * @param price is price of item
     */
-    public entry fun update_royal_item(
+    public entry fun add_royal_item(
         admin: &mut Admin, 
         container: &mut Container, 
-        name_of_royal: String,
+        name: String,
         image_url: String, 
+        fee: u64,
         attribute_keys: vector<String>,
         attribute_values: vector<String>,
         ctx: &mut TxContext
@@ -226,11 +222,49 @@ module fesh_item::royal_item {
         let new_royal = RoyalItem {
             name,
             image_url,
-            attributes
-            royal_items: container.royal_items
+            attributes,
+            fee
         };
 
-        container.royal_item = new_royal;
+        vector::push_back(&mut container.royal_items, new_royal);
+    }
+
+    /***
+    * @dev remove_royal_item
+    * @param admin is admin id
+    * @param container is container id
+    * @param name is name of item
+    * @param price is price of item
+    */
+    public entry fun remove_royal_item(
+        admin: &mut Admin, 
+        container: &mut Container, 
+        name: String,
+        ctx: &mut TxContext
+    ) {
+        let sender = sender(ctx);
+        // admin only
+        assert!(admin::is_admin(admin, sender) == true, EAdminOnly);
+
+        // find and remove psss royal
+        let royal_items = container.royal_items;
+        let items_length = vector::length(&royal_items);
+        let current_index = 0;
+        let index = 0;
+        let is_existed = false;
+        // loop to find index
+        while(index < items_length) {
+                if(vector::borrow(&royal_items, index).name == name) {
+                        is_existed = true;
+                        current_index = index;
+                        break
+                };
+
+                index = index + 1;
+        };
+        // remove if exist
+        assert!(is_existed == true, EItemNotFound);
+        vector::remove(&mut royal_items, current_index);
     }
 
     /***
@@ -240,7 +274,7 @@ module fesh_item::royal_item {
     * @param name is name of item
     * @param price is price of item
     */
-    public entry fun add_item(
+    public entry fun add_peice_item(
         admin: &mut Admin, 
         container: &mut Container, 
         name_of_royal: String,
@@ -257,8 +291,9 @@ module fesh_item::royal_item {
 
         let attributes: VecMap<String, String> = make_vec_map(attribute_keys, attribute_values);
 
-        vector::push_back(&mut container.royal_items, RoyalItem {
-            name,
+        vector::push_back(&mut container.peice_items, Piece {
+            royal_name: name_of_royal,
+            name: name_of_item,
             image_url,
             price,
             attributes
@@ -270,7 +305,7 @@ module fesh_item::royal_item {
     * @param admin is admin id
     * @param container is container id
     */
-    public entry fun remove_item(
+    public entry fun remove_peice_item(
         admin: &mut Admin, 
         container: &mut Container, 
         name_of_royal: String,
@@ -281,12 +316,13 @@ module fesh_item::royal_item {
         //admin only
         assert!(admin::is_admin(admin, sender) == true, EAdminOnly);
         let index = 0;
-        let items = container.royal_items;
+        let items = container.peice_items;
         let items_length = vector::length(&items);
         let current_index = 0;
         let is_existed = false;
         while(index < items_length) {
-                if(vector::borrow(&items, index).name == name) {
+                let current_peice = vector::borrow(&items, index);
+                if(current_peice.name == name_of_item && current_peice.royal_name == name_of_royal) {
                         is_existed = true;
                         current_index = index;
                         break
@@ -299,95 +335,96 @@ module fesh_item::royal_item {
         vector::remove(&mut items, current_index);
     }
 
-    /***
-    * @dev buy_conmmon_item_with_sui
-    * @param admin is admin id
-    * @param container is container id
-    * @param coin is coin id
-    * @param amount is amount of item
-    * @param name is name of item
-    */
-    public entry fun make_buy_conmmon_item_with_sui(
-        admin: &mut Admin,
-        container: &mut Container, 
-        coin: Coin<SUI>, 
-        amount: u64, 
-        name: String, 
-        ctx: &mut TxContext
-    ) {
-        let sender = sender(ctx);
+    // /***
+    // * @dev buy_conmmon_item_with_sui
+    // * @param admin is admin id
+    // * @param container is container id
+    // * @param coin is coin id
+    // * @param amount is amount of item
+    // * @param name is name of item
+    // */
+    // public entry fun make_buy_conmmon_item_with_sui(
+    //     admin: &mut Admin,
+    //     container: &mut Container, 
+    //     coin: Coin<SUI>, 
+    //     amount: u64, 
+    //     royal_name: String,
+    //     name: String, 
+    //     ctx: &mut TxContext
+    // ) {
+    //     let sender = sender(ctx);
 
-        // nft
-        let index = 0;
-        // get item
-        let (current_name, current_attributes, current_image_url, current_price) = get_item_buy_name(container, name);
-        // mint and transfer with amount
-        while(index < amount) {
-            let new_nft = Nft{
-                    id: object::new(ctx),
-                    name: current_name,
-                    image_url: current_image_url,
-                    attributes: current_attributes,
-            };
-            transfer::public_transfer(new_nft, sender);
-            index = index + 1;
+    //     // nft
+    //     let index = 0;
+    //     // get item
+    //     let (current_name, current_attributes, current_image_url, current_price) = get_item_buy_name(container, name);
+    //     // mint and transfer with amount
+    //     while(index < amount) {
+    //         let new_nft = Nft{
+    //                 id: object::new(ctx),
+    //                 name: current_name,
+    //                 image_url: current_image_url,
+    //                 attributes: current_attributes,
+    //         };
+    //         transfer::public_transfer(new_nft, sender);
+    //         index = index + 1;
             
-        };
+    //     };
 
-        // pay
-        let balance: Balance<SUI> = balance::split(coin::balance_mut(&mut coin), current_price * amount);
-        admin::pay_with_sui(admin, coin::from_balance(balance, ctx), amount * current_price);
+    //     // pay
+    //     let balance: Balance<SUI> = balance::split(coin::balance_mut(&mut coin), current_price * amount);
+    //     admin::pay_with_sui(admin, coin::from_balance(balance, ctx), amount * current_price);
 
-        // increase
-        container.total_royal_piece_bought = container.total_royal_piece_bought + amount;
+    //     // increase
+    //     container.total_royal_piece_bought = container.total_royal_piece_bought + amount;
 
-        transfer::public_transfer(coin, sender);
-    }
+    //     transfer::public_transfer(coin, sender);
+    // }
 
-    /***
-    * @dev buy_conmmon_item_with_sui
-    * @param admin is admin id
-    * @param container is container id
-    * @param coin is coin id
-    * @param amount is amount of item
-    * @param name is name of item
-    */
-    public entry fun make_buy_conmmon_item_with_fesh(
-        admin: &mut Admin, 
-        container: &mut Container, 
-        coin: Coin<FESH>, 
-        amount: u64, 
-        name: String, 
-        ctx: &mut TxContext
-    ) {
-        let sender = sender(ctx);
+    // /***
+    // * @dev buy_conmmon_item_with_sui
+    // * @param admin is admin id
+    // * @param container is container id
+    // * @param coin is coin id
+    // * @param amount is amount of item
+    // * @param name is name of item
+    // */
+    // public entry fun make_buy_conmmon_item_with_fesh(
+    //     admin: &mut Admin, 
+    //     container: &mut Container, 
+    //     coin: Coin<FESH>, 
+    //     amount: u64, 
+    //     name: String, 
+    //     ctx: &mut TxContext
+    // ) {
+    //     let sender = sender(ctx);
 
-        // nft
-        let index = 0;
-        // get item
-        let (current_name, current_attributes, current_image_url, current_price) = get_item_buy_name(container, name);
-        // mint and transfer with amount
-        while(index < amount) {
-            let new_nft = Nft{
-                    id: object::new(ctx),
-                    name: current_name,
-                    image_url: current_image_url,
-                    attributes: current_attributes,
-            };
-            transfer::public_transfer(new_nft, sender);
-            index = index + 1;
+    //     // nft
+    //     let index = 0;
+    //     // get item
+    //     let (current_name, current_attributes, current_image_url, current_price) = get_item_buy_name(container, name);
+    //     // mint and transfer with amount
+    //     while(index < amount) {
+    //         let new_nft = Nft{
+    //                 id: object::new(ctx),
+    //                 name: current_name,
+    //                 image_url: current_image_url,
+    //                 attributes: current_attributes,
+    //         };
+    //         transfer::public_transfer(new_nft, sender);
+    //         index = index + 1;
             
-        };
+    //     };
 
-        // pay
-        let balance: Balance<FESH> = balance::split(coin::balance_mut(&mut coin), current_price * amount);
-        admin::pay_with_fesh(admin, coin::from_balance(balance, ctx), amount * current_price);
+    //     // pay
+    //     let balance: Balance<FESH> = balance::split(coin::balance_mut(&mut coin), current_price * amount);
+    //     admin::pay_with_fesh(admin, coin::from_balance(balance, ctx), amount * current_price);
 
-        // increase
-        container.total_royal_piece_bought = container.total_royal_piece_bought + amount;
+    //     // increase
+    //     container.total_royal_piece_bought = container.total_royal_piece_bought + amount;
 
-        transfer::public_transfer(coin, sender);
-    }
+    //     transfer::public_transfer(coin, sender);
+    // }
 
 
     fun burn(nft: Nft) {
@@ -459,29 +496,29 @@ module fesh_item::royal_item {
         count == items_length
     }
 
-    public entry fun get_royal_item(
-        container: &mut Container,
-        item_1: Nft,
-        item_2: Nft,
-        item_3: Nft,
-        item_4: Nft,
-        item_5: Nft,
-        item_6: Nft,
-        item_7: Nft,
-        item_8: Nft,
-        ctx: &mut TxContext
-    ) {
-        let available = check_and_burn(container, item_1, item_2, item_3, item_4, item_5, item_6, item_7, item_8);
-        let new_nft = Nft{
-            id: object::new(ctx),
-            name: container.royal_item.name,
-            image_url: container.royal_item.image_url,
-            attributes: container.royal_item.attributes,
-        };
+    // public entry fun get_royal_item(
+    //     container: &mut Container,
+    //     item_1: Nft,
+    //     item_2: Nft,
+    //     item_3: Nft,
+    //     item_4: Nft,
+    //     item_5: Nft,
+    //     item_6: Nft,
+    //     item_7: Nft,
+    //     item_8: Nft,
+    //     ctx: &mut TxContext
+    // ) {
+    //     let available = check_and_burn(container, item_1, item_2, item_3, item_4, item_5, item_6, item_7, item_8);
+    //     let new_nft = Nft{
+    //         id: object::new(ctx),
+    //         name: container.royal_item.name,
+    //         image_url: container.royal_item.image_url,
+    //         attributes: container.royal_item.attributes,
+    //     };
 
 
 
-    }
+    // }
 
 
 }

@@ -41,6 +41,11 @@ module fesh_item::common_item {
         transfer::share_object(container);
     }
 
+    struct AddCommonItemEvent has copy, drop {
+        name: String,
+        price: u64,
+    }
+
     /***
     * @dev add_item
     * @param admin is admin id
@@ -56,6 +61,16 @@ module fesh_item::common_item {
             name,
             price,
         });
+        //event
+        event::emit(AddCommonItemEvent{
+            name,
+            price,
+        });
+    }
+
+
+    struct RemoveCommonItemEvent has copy,drop {
+        name: String,
     }
 
     /***
@@ -80,14 +95,18 @@ module fesh_item::common_item {
                 if(vector::borrow(&items, index).name == name) {
                         is_existed = true;
                         current_index = index;
+                        break
                 };
 
                 index = index + 1;
         };
         // remove if exist
-        if(is_existed == true) {
-                vector::remove(&mut items, current_index);
-        };
+        assert!(is_existed == true, EItemNotFound);
+        vector::remove(&mut items, current_index);
+        //event
+        event::emit(RemoveCommonItemEvent{
+            name,
+        });
     }
 
     /***
@@ -102,6 +121,8 @@ module fesh_item::common_item {
         assert!(admin::is_admin(admin, sender) == true, EAdminOnly);
         container.enable = status;
     }
+
+    
 
     /***
     * @dev get_item_buy_name
