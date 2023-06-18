@@ -1,15 +1,11 @@
 module fesh_item::admin {
-    // custom token
-    use fesh_token::fesh::{Self, FESH};
 
     // another token
-    use sui::sui::SUI;
-    use sui::object::{Self,UID};
-    use std::type_name::{Self};
+    use sui::object::{Self,UID,ID};
     use sui::coin::{Self, Coin};
     use sui::balance::{Self,Balance};
-    use std::string::{Self,String,utf8};
-    use sui::tx_context::{Self, TxContext, sender};
+    use sui::tx_context::{Self, TxContext};
+    use std::type_name::{Self, TypeName};
     use sui::transfer;
     use std::vector;
     // error
@@ -20,27 +16,70 @@ module fesh_item::admin {
     struct Admin has key {
         id: UID,
         addresses: vector<address>,
-        sui_pool: Coin<SUI>,
-        total_sui_pool: u64,
-        fesh_pool: Coin<FESH>,
-        total_fesh_pool: u64,
+        pools: vector<ID>,
+    }
+
+    struct Pool<phantom C>  has key {
+        id: UID,
+        admin: ID,
+        coin_type: TypeName,
+        coin: Coin<C>,
+        total: u64,
     }
 
     fun init(ctx:&mut TxContext) {
-        let sender = sender(ctx);
+        let sender = tx_context::sender(ctx);
         let enable_addresses = vector::empty();
         vector::push_back(&mut enable_addresses, sender);
 
         let admin = Admin{
             id: object::new(ctx),
             addresses: enable_addresses,
-            sui_pool: coin::from_balance(balance::zero<SUI>(), ctx),
-            total_sui_pool: 0,
-            fesh_pool: coin::from_balance(balance::zero<FESH>(), ctx),
-            total_fesh_pool: 0,
+            pools: vector::empty(),
         };
 
         transfer::share_object(admin);
+    }
+
+
+    /***
+    * @dev add_pool
+    * @param admin is admin id
+    */
+    public entry fun make_add_pool<C>(admin: &mut Admin, ctx: &mut TxContext) {
+        let sender = tx_context::sender(ctx);
+        // admin only
+        assert!(is_admin(admin, sender) == true,EAdminOnly);
+        // new pool
+        let pool = Pool<C> {
+            id: object::new(ctx),
+            admin: object::id(admin),
+            coin: coin::from_balance(balance::zero<C>(), ctx),
+            coin_type: type_name::get<C>(),
+            total: 0,
+        };
+
+        // push id to list
+        vector::push_back(&mut admin.pools, object::id(&pool));
+        // share
+        transfer::share_object(pool);
+    }
+
+
+    /***
+    * @dev withdraw
+    * @param admin is admin id
+    * @param pool is pool id
+    * @param receive_address is who receive coin
+    */
+    public entry fun make_withdraw<C>(admin: &mut Admin, pool: &mut Pool<C>, receive_address: address, ctx: &mut TxContext) {
+        let sender = tx_context::sender(ctx);
+        // admin only
+        assert!(is_admin(admin, sender) == true, EAdminOnly);
+
+        let money:Balance<C> = balance::split(coin::balance_mut(&mut pool.coin), pool.total);
+        transfer::public_transfer(coin::from_balance(money, ctx), receive_address);
+        pool.total = 0;
     }
 
 
@@ -74,7 +113,7 @@ module fesh_item::admin {
     * @param new_addresses
     */
     public entry fun add_admin(admin:&mut Admin, new_addresses: vector<address>, ctx:&mut TxContext){
-        let sender = sender(ctx);
+        let sender = tx_context::sender(ctx);
         // admin only
         assert!(is_admin(admin, sender) == true,EAdminOnly);
         vector::append(&mut admin.addresses, new_addresses);
@@ -87,7 +126,7 @@ module fesh_item::admin {
     */
     public entry fun remove_admin(admin:&mut Admin, delete_address: address, ctx:&mut TxContext){
             // check admin
-            let sender = sender(ctx);
+            let sender = tx_context::sender(ctx);
             assert!(is_admin(admin, sender) == true, EAdminOnly);
 
             let index = 0;
@@ -111,45 +150,14 @@ module fesh_item::admin {
     }
 
     /***
-    * @dev withdraw
-    * @param admin is admin id
-    * @param receive_address
-    */
-    public entry fun withdraw(admin: &mut Admin, receive_address: address, ctx: &mut TxContext) {
-        let sender = sender(ctx);
-        // admin only
-        assert!(is_admin(admin, sender) == true, EAdminOnly);
-        let sui_money:Balance<SUI> = balance::split(coin::balance_mut(&mut admin.sui_pool), admin.total_sui_pool);
-        let fesh_money:Balance<FESH> = balance::split(coin::balance_mut(&mut admin.fesh_pool), admin.total_fesh_pool);
-
-        transfer::public_transfer(coin::from_balance(sui_money, ctx), receive_address);
-        transfer::public_transfer(coin::from_balance(fesh_money, ctx), receive_address);
-
-        admin.total_sui_pool = 0;
-        admin.total_fesh_pool = 0;
-
-    }
-
-    /***
     * @dev pay_with_sui
     * @param admin is admin id
     * @param coin
     * @param amount
     */
-    public fun pay_with_sui(admin: &mut Admin, coin: Coin<SUI>, amount: u64) {
-          coin::join(&mut admin.sui_pool, coin);
-          admin.total_sui_pool = admin.total_sui_pool + amount;
-    }
-
-    /***
-    * @dev pay_with_fesh
-    * @param admin is admin id
-    * @param coin
-    * @param amount
-    */
-    public fun pay_with_fesh(admin: &mut Admin, coin: Coin<FESH>, amount: u64) {
-          coin::join(&mut admin.fesh_pool, coin);
-          admin.total_sui_pool = admin.total_fesh_pool + amount;
+    public fun pay<C>(pool: &mut Pool<C>, coin: Coin<C>, amount: u64) {
+          coin::join(&mut pool.coin, coin);
+          pool.total = pool.total + amount;
     }
 
 

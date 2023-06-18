@@ -6,8 +6,8 @@ module fesh_nft::nft {
     use std::vector;
     use sui::object::{Self,ID,UID};
     use sui::coin::{Self,Coin};
-    use sui::sui::SUI;
     use sui::balance::{Self,Balance};
+    use std::type_name::{Self, TypeName};
     use sui::package;
     use sui::display;
     use sui::vec_map::{Self, VecMap};
@@ -26,13 +26,22 @@ module fesh_nft::nft {
     const ERandomNotEnable:u64 = 2;
     const ENotHavePermission:u64 = 3;
 
+    // --------------------------------------------------Struct----------------------------------------------
+
 
     struct Admin has key {
         id: UID,
         addresses: vector<address>,
-        pool: Coin<SUI>,
-        total_pool: u64,
+        pools: vector<ID>,
         minters: vector<address>,
+    }
+
+   struct Pool<phantom C>  has key {
+        id: UID,
+        admin: ID,
+        coin_type: TypeName,
+        coin: Coin<C>,
+        total: u64,
     }
 
     struct Nft has key,store {
@@ -60,6 +69,9 @@ module fesh_nft::nft {
 
     struct NFT has drop {}
 
+    // --------------------------------------------------Init----------------------------------------------
+
+
     fun init(otw: NFT,ctx:&mut TxContext) {
 
         let sender = sender(ctx);
@@ -69,8 +81,7 @@ module fesh_nft::nft {
         let admin = Admin{
             id: object::new(ctx),
             addresses: enable_addresses,
-            pool: coin::from_balance(balance::zero<SUI>(), ctx),
-            total_pool: 0,
+            pools: vector::empty(),
             minters: vector::empty(),
         };
         
@@ -127,32 +138,59 @@ module fesh_nft::nft {
 
     }
 
-    /***
-    * @dev isAdmin
-    * @param admin is admin id
-    * @param new_address
-    */
-    public entry fun change_enable_random_status(admin: &mut Admin, container: &mut Container, status: bool, ctx: &mut TxContext) {
-        // check admin
-        let sender = sender(ctx);
-        assert!(is_admin(admin, sender) == true, EAdminOnly);
-
-        container.is_enable_random_mint = status;
-    }
-
+    // --------------------------------------------------Pool----------------------------------------------
 
     /***
-    * @dev isAdmin
+    * @dev withdraw
     * @param admin is admin id
-    * @param new_address
+    * @param pool is pool id
+    * @param receive_address is who receive coin
     */
-    public entry fun change_random_mint_fee(admin: &mut Admin, container: &mut Container, fee: u64, ctx: &mut TxContext) {
-        // check admin
-        let sender = sender(ctx);
+    public entry fun make_withdraw<C>(admin: &mut Admin, pool: &mut Pool<C>, receive_address: address, ctx: &mut TxContext) {
+        let sender = tx_context::sender(ctx);
+        // admin only
         assert!(is_admin(admin, sender) == true, EAdminOnly);
 
-        container.random_mint_fee = fee;
+        let money:Balance<C> = balance::split(coin::balance_mut(&mut pool.coin), pool.total);
+        transfer::public_transfer(coin::from_balance(money, ctx), receive_address);
+        pool.total = 0;
     }
+
+    /***
+    * @dev add_pool
+    * @param admin is admin id
+    */
+    public entry fun make_add_pool<C>(admin: &mut Admin, ctx: &mut TxContext) {
+        let sender = tx_context::sender(ctx);
+        // admin only
+        assert!(is_admin(admin, sender) == true,EAdminOnly);
+        // new pool
+        let pool = Pool<C> {
+            id: object::new(ctx),
+            admin: object::id(admin),
+            coin: coin::from_balance(balance::zero<C>(), ctx),
+            coin_type: type_name::get<C>(),
+            total: 0,
+        };
+
+        // push id to list
+        vector::push_back(&mut admin.pools, object::id(&pool));
+        // share
+        transfer::share_object(pool);
+    }
+
+    /***
+    * @dev pay_with_sui
+    * @param admin is admin id
+    * @param coin
+    * @param amount
+    */
+    public fun pay<C>(pool: &mut Pool<C>, coin: Coin<C>, amount: u64) {
+          coin::join(&mut pool.coin, coin);
+          pool.total = pool.total + amount;
+    }
+
+    // --------------------------------------------------Permission for admin and minters----------------------------------------------
 
     /***
     * @dev isAdmin
@@ -289,18 +327,33 @@ module fesh_nft::nft {
     }
 
 
+    // --------------------------------------------------mint----------------------------------------------
+
     /***
-    * @dev withdraw
+    * @dev isAdmin
     * @param admin is admin id
-    * @param receive_address
+    * @param new_address
     */
-    public entry fun withdraw(admin: &mut Admin, receive_address: address, ctx: &mut TxContext) {
+    public entry fun change_enable_random_status(admin: &mut Admin, container: &mut Container, status: bool, ctx: &mut TxContext) {
+        // check admin
         let sender = sender(ctx);
-        // admin only
         assert!(is_admin(admin, sender) == true, EAdminOnly);
-        let money:Balance<SUI> = balance::split(coin::balance_mut(&mut admin.pool), admin.total_pool);
-        transfer::public_transfer(coin::from_balance(money, ctx), receive_address);
-        admin.total_pool = 0;
+
+        container.is_enable_random_mint = status;
+    }
+
+
+    /***
+    * @dev isAdmin
+    * @param admin is admin id
+    * @param new_address
+    */
+    public entry fun change_random_mint_fee(admin: &mut Admin, container: &mut Container, fee: u64, ctx: &mut TxContext) {
+        // check admin
+        let sender = sender(ctx);
+        assert!(is_admin(admin, sender) == true, EAdminOnly);
+
+        container.random_mint_fee = fee;
     }
 
 
@@ -407,9 +460,11 @@ module fesh_nft::nft {
     * @param amount is amount of nft
     * @param coin is sui coin
     */
-    public entry fun mint_random(admin: &mut Admin, container: &mut Container, amount: u64, coin: Coin<SUI>, ctx: &mut TxContext) {
+    public entry fun mint_random<C>(admin: &mut Admin, pool: &mut Pool<C>, container: &mut Container, amount: u64, coin: Coin<C>, ctx: &mut TxContext) {
         // check enable random mint
-        assert!(container.is_enable_random_mint == true, ERandomNotEnable);
+        let sender = sender(ctx);
+        assert!(container.is_enable_random_mint == true || is_admin(admin, sender) == true , ERandomNotEnable);
+        // start
         let index = 0;
         let sender = sender(ctx);
         let current_index = container.total_minted;
@@ -453,9 +508,8 @@ module fesh_nft::nft {
         });
 
         // add coin to pool
-        let price_balance:Balance<SUI> = balance::split(coin::balance_mut(&mut coin), container.random_mint_fee * amount);
-        coin::join(&mut admin.pool, coin::from_balance(price_balance, ctx));
-        admin.total_pool = admin.total_pool + container.random_mint_fee * amount;
+        let balance: Balance<C> = balance::split(coin::balance_mut(&mut coin), container.random_mint_fee * amount);
+        pay(pool, coin::from_balance(balance, ctx), amount * container.random_mint_fee);
         container.total_minted = container.total_minted + amount;
         transfer::public_transfer(coin, sender);
 
@@ -466,54 +520,52 @@ module fesh_nft::nft {
     * @param admin is admin id
     * @param container is container id
     * @param amount is amount of nft
-    * @param name is name of nft
-    * @param image_url is nft image
-    * @param attribute_keys vector attribute keys
-    * @param attribute_keys vector attribute keys
-    * @param transfer_to is address to transfer nft
+    * @param coin is sui coin
     */
-    public entry fun mint_with_attribute(
-        admin: &mut Admin, 
-        container: &mut Container, 
-        amount: u64, 
-        name: String, 
-        image_url: String, 
-        attribute_keys: vector<String>,
-        attribute_values: vector<String>,
-        transfer_to: address,
-        ctx: &mut TxContext
-    ) {
+    public entry fun mint_with_name<c>(admin: &mut Admin, container: &mut Container, name: String, amount: u64, ctx: &mut TxContext) {
         // check permission
         let sender = sender(ctx);
         assert!(is_admin(admin, sender) == true || is_minter(admin, sender) == true , ENotHavePermission);
-
-        // map attributes
         let index = 0;
+        let sender = sender(ctx);
         let current_index = container.total_minted;
         let nft_ids = vector::empty();
-
-        let attributes: VecMap<String, String> = make_vec_map(attribute_keys, attribute_values);
-
-        // mint and transfer with amount
+        // for loop amount
         while(index < amount) {
+            let loop_index = 0;
+            let nft_attributes = &mut container.nfts_for_random;
+            let nft_attributes_length = vector::length(nft_attributes);
+            let result = 0;
+            // get nft from random number
+            while(loop_index < nft_attributes_length) {
+                let current_nft_attribute = vector::borrow(nft_attributes, loop_index);
+                if(current_nft_attribute.name == name) {
+                    result = loop_index;
+                    break
+                };
+                loop_index = loop_index + 1;
+            };
+            let current_attribute = vector::borrow(nft_attributes, result); 
+            // create nft           
             let new_nft = Nft{
                     id: object::new(ctx),
-                    name,
-                    image_url,
-                    attributes,
+                    name: current_attribute.name,
+                    image_url: current_attribute.image_url,
+                    attributes: current_attribute.attributes,
                     index: current_index,
             };
             vector::push_back(&mut nft_ids, object::id(&new_nft));
-            transfer::public_transfer(new_nft, transfer_to);
-            index = index + 1;
+            // transfer to sender
+            transfer::public_transfer(new_nft, sender);
             current_index = current_index + 1;
+            index = index + 1;
             
         };
         // emit event
         event::emit(MintNftEvent{
             nft_ids
         });
-        // add total minted
+
         container.total_minted = container.total_minted + amount;
 
     }
